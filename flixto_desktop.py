@@ -214,24 +214,31 @@ class MediaDetailDialog(QDialog):
             self.poster.setPixmap(pm.scaled(200, 300, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation))
 
     def start_stream(self):
-        season = self.season_cb.currentData() if self.media_type == "tv" else 1
-        episode = self.episode_cb.currentData() if self.media_type == "tv" else 1
+        season = 1
+        episode = 1
+        if self.media_type == "tv" and hasattr(self, "season_cb"):
+            season = self.season_cb.currentData()
+            episode = self.episode_cb.currentData()
 
-        self.player_window = FlixtoAdFreePlayer(
-            title=self.title_text,
-            media_type=self.media_type,
-            tmdb_id=self.tmdb_id,
-            season=season,
-            episode=episode
-        )
-        self.player_window.show()
+        # Safely disconnect and stop detail poster worker
+        if hasattr(self, "worker") and self.worker and self.worker.isRunning():
+            try:
+                self.worker.disconnect()
+                self.worker.wait(100)
+            except Exception:
+                pass
+
+        parent_win = self.parent()
         self.accept()
+        if parent_win and hasattr(parent_win, "open_player"):
+            parent_win.open_player(self.title_text, self.media_type, self.tmdb_id, season, episode)
 
 class FlixtoDesktopApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Flixto — Ad-Free Desktop Streaming Engine")
         self.resize(1280, 800)
+        self.player_window = None
         self.setStyleSheet("""
             QMainWindow { background-color: #0a0a0b; }
             QWidget { background-color: #0a0a0b; color: #ffffff; font-family: 'Segoe UI', sans-serif; }
@@ -375,6 +382,24 @@ class FlixtoDesktopApp(QMainWindow):
     def open_detail(self, item_data):
         dlg = MediaDetailDialog(self, item_data)
         dlg.exec()
+
+    def open_player(self, title, media_type, tmdb_id, season=1, episode=1):
+        print(f"[Flixto] Launching ad-shield player for: {title} ({media_type} {tmdb_id})")
+        if self.player_window:
+            try:
+                self.player_window.close()
+            except Exception:
+                pass
+        self.player_window = FlixtoAdFreePlayer(
+            title=title,
+            media_type=media_type,
+            tmdb_id=tmdb_id,
+            season=season,
+            episode=episode
+        )
+        self.player_window.show()
+        self.player_window.raise_()
+        self.player_window.activateWindow()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
