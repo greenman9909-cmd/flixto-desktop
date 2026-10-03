@@ -1,5 +1,13 @@
 import sys
 import os
+
+os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = (
+    "--disable-web-security "
+    "--allow-running-insecure-content "
+    "--autoplay-policy=no-user-gesture-required "
+    "--disable-features=IsolateOrigins,site-per-process"
+)
+
 import json
 import urllib.request
 import urllib.parse

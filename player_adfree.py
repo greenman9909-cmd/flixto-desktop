@@ -1,6 +1,8 @@
 import sys
-from PySide6.QtCore import Qt, QUrl, QTimer
-from PySide6.QtGui import QIcon, QKeySequence, QShortcut
+import os
+
+from PySide6.QtCore import Qt, QUrl, QTimer, QPointF
+from PySide6.QtGui import QIcon, QKeySequence, QShortcut, QMouseEvent
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QComboBox
@@ -10,38 +12,43 @@ from PySide6.QtWebEngineCore import (
     QWebEngineProfile, QWebEnginePage, QWebEngineSettings
 )
 
+# Top tier high-speed ad-free verified streaming servers
 SERVERS = [
-    {"name": "Server 1 (VidLink Auto)", "url_m": "https://vidlink.pro/movie/{id}?autoplay=true", "url_tv": "https://vidlink.pro/tv/{id}/{s}/{e}?autoplay=true"},
-    {"name": "Server 2 (Videasy HD)", "url_m": "https://player.videasy.to/movie/{id}?color=ff3d47&autoplay=true", "url_tv": "https://player.videasy.to/tv/{id}/{s}/{e}?color=ff3d47&autoplay=true"},
-    {"name": "Server 3 (VidSrc.to)", "url_m": "https://vidsrc.to/embed/movie/{id}?autoplay=1", "url_tv": "https://vidsrc.to/embed/tv/{id}/{s}/{e}?autoplay=1"},
-    {"name": "Server 4 (VidSrc PM)", "url_m": "https://vidsrc.pm/embed/movie?tmdb={id}&autoplay=1", "url_tv": "https://vidsrc.pm/embed/tv?tmdb={id}&season={s}&episode={e}&autoplay=1"},
-    {"name": "Server 5 (MultiEmbed)", "url_m": "https://multiembed.mov/?video_id={id}&tmdb=1&autoplay=1", "url_tv": "https://multiembed.mov/?video_id={id}&tmdb=1&s={s}&e={e}&autoplay=1"},
-]
-
-AD_BLOCK_DOMAINS = [
-    "adexchangerapid.com", "popads.net", "adsterra.com", "propellerads.com",
-    "bancadeltempoidea.org", "intellipopup.com", "xgrowth.pro", "histats.com",
-    "syndication.exdynsrv.com", "deloton.com", "mndtrk.com", "adnxs.com",
-    "ad-delivery.net", "trafficfactory.biz", "bet365.com", "1xbet.com",
-    "clkmr.com", "clickadu.com", "hilltopads.net", "turnstile"
+    {
+        "name": "Server 1 (Videasy Ultra HD)",
+        "url_m": "https://player.videasy.to/movie/{id}?color=ff3d47&autoplay=true",
+        "url_tv": "https://player.videasy.to/tv/{id}/{s}/{e}?color=ff3d47&autoplay=true"
+    },
+    {
+        "name": "Server 2 (MultiEmbed Fast)",
+        "url_m": "https://multiembed.mov/?video_id={id}&tmdb=1&autoplay=1",
+        "url_tv": "https://multiembed.mov/?video_id={id}&tmdb=1&s={s}&e={e}&autoplay=1"
+    },
+    {
+        "name": "Server 3 (SmashyStream Auto)",
+        "url_m": "https://embed.smashystream.com/playere.php?tmdb={id}",
+        "url_tv": "https://embed.smashystream.com/playere.php?tmdb={id}&season={s}&episode={e}"
+    },
+    {
+        "name": "Server 4 (VidSrc High-Speed)",
+        "url_m": "https://vidsrc.in/embed/movie/{id}",
+        "url_tv": "https://vidsrc.in/embed/tv/{id}/{s}/{e}"
+    },
+    {
+        "name": "Server 5 (VidLink Pro)",
+        "url_m": "https://vidlink.pro/movie/{id}?autoplay=true",
+        "url_tv": "https://vidlink.pro/tv/{id}/{s}/{e}?autoplay=true"
+    },
 ]
 
 KILL_POPUPS_SCRIPT = """
 (function() {
-    window.open = function() { console.log('[AdBlock] Blocked window.open popup'); return null; };
+    window.open = function() { console.log('[AdBlock] Blocked popup window'); return null; };
     window.alert = function() { return null; };
     window.confirm = function() { return true; };
     window.prompt = function() { return null; };
 
-    // Block top redirects
-    try {
-        Object.defineProperty(window, 'location', {
-            configurable: false,
-            writable: false
-        });
-    } catch(e) {}
-
-    // Remove ad overlays
+    // Auto-remove ad overlays
     setInterval(function() {
         var selectors = [
             'iframe[src*="adexchangerapid"]', 'iframe[src*="pop"]',
@@ -59,6 +66,7 @@ KILL_POPUPS_SCRIPT = """
 
 class AdFreeWebPage(QWebEnginePage):
     def createWindow(self, _type):
+        # Intercept and destroy all popup requests
         print("[AdBlock] BLOCKED POPUP WINDOW REQUEST!")
         return None
 
@@ -88,16 +96,24 @@ class FlixtoAdFreePlayer(QMainWindow):
             }
         """)
 
+        # Configure WebEngine Profile
+        profile = QWebEngineProfile.defaultProfile()
+        profile.setHttpUserAgent(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
+        )
+
         # Setup WebEngine View
         self.view = QWebEngineView(self)
-        self.custom_page = AdFreeWebPage(self.view)
+        self.custom_page = AdFreeWebPage(profile, self.view)
         self.view.setPage(self.custom_page)
 
-        # Settings
+        # WebEngine Security & Autoplay Settings
         settings = self.view.settings()
         settings.setAttribute(QWebEngineSettings.PlaybackRequiresUserGesture, False)
         settings.setAttribute(QWebEngineSettings.FullScreenSupportEnabled, True)
         settings.setAttribute(QWebEngineSettings.AllowRunningInsecureContent, True)
+        settings.setAttribute(QWebEngineSettings.LocalContentCanAccessRemoteUrls, True)
+        settings.setAttribute(QWebEngineSettings.LocalContentCanAccessFileUrls, True)
         settings.setAttribute(QWebEngineSettings.JavascriptCanOpenWindows, False)
 
         # Inject Adblock JS on page load
@@ -119,6 +135,14 @@ class FlixtoAdFreePlayer(QMainWindow):
             self.server_cb.addItem(s["name"])
         self.server_cb.currentIndexChanged.connect(self.switch_server)
         top_layout.addWidget(self.server_cb)
+
+        self.next_btn = QPushButton("Next Server ⏭", self)
+        self.next_btn.clicked.connect(self.next_server)
+        top_layout.addWidget(self.next_btn)
+
+        self.reload_btn = QPushButton("↻ Reload", self)
+        self.reload_btn.clicked.connect(self.load_current_server)
+        top_layout.addWidget(self.reload_btn)
 
         top_layout.addStretch()
 
@@ -154,18 +178,73 @@ class FlixtoAdFreePlayer(QMainWindow):
 
     def load_current_server(self):
         s_dict = SERVERS[self.server_idx]
-        url = self.get_server_url(s_dict)
-        print(f"[Player] Loading: {url}")
-        self.view.setUrl(QUrl(url))
+        raw_url = self.get_server_url(s_dict)
+        print(f"[Player] Loading {s_dict['name']}: {raw_url}")
+
+        # Render inside sandbox iframe with trusted origin to prevent 403 & CORS issues
+        html_wrapper = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <style>
+                html, body {{
+                    margin: 0;
+                    padding: 0;
+                    width: 100%;
+                    height: 100%;
+                    overflow: hidden;
+                    background-color: #000;
+                }}
+                iframe {{
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    border: none;
+                }}
+            </style>
+        </head>
+        <body>
+            <iframe id="flixto_stream"
+                    src="{raw_url}"
+                    allowfullscreen="true"
+                    webkitallowfullscreen="true"
+                    mozallowfullscreen="true"
+                    allow="autoplay; fullscreen; encrypted-media; picture-in-picture">
+            </iframe>
+        </body>
+        </html>
+        """
+        origin_url = QUrl(f"https://flixto.to/watch/{self.media_type}/{self.tmdb_id}")
+        self.view.setHtml(html_wrapper, origin_url)
 
     def switch_server(self, idx):
-        self.server_idx = idx
-        self.load_current_server()
+        if idx != self.server_idx:
+            self.server_idx = idx
+            self.load_current_server()
+
+    def next_server(self):
+        new_idx = (self.server_idx + 1) % len(SERVERS)
+        self.server_cb.setCurrentIndex(new_idx)
 
     def on_page_loaded(self, ok):
         if ok:
             print("[Player] Page loaded. Injecting Ad-Shield scripts...")
             self.view.page().runJavaScript(KILL_POPUPS_SCRIPT)
+            # Auto-click play button after 2.5 seconds
+            QTimer.singleShot(2500, self.trigger_autoplay_click)
+
+    def trigger_autoplay_click(self):
+        try:
+            center = QPointF(self.view.width() / 2, self.view.height() / 2)
+            press = QMouseEvent(QMouseEvent.MouseButtonPress, center, Qt.LeftButton, Qt.LeftButton, Qt.NoModifier)
+            release = QMouseEvent(QMouseEvent.MouseButtonRelease, center, Qt.LeftButton, Qt.LeftButton, Qt.NoModifier)
+            QApplication.sendEvent(self.view.focusProxy(), press)
+            QApplication.sendEvent(self.view.focusProxy(), release)
+        except Exception:
+            pass
 
     def toggle_fullscreen(self):
         if self.isFullScreen():
@@ -181,6 +260,13 @@ class FlixtoAdFreePlayer(QMainWindow):
             self.fs_btn.setText("Fullscreen [F]")
 
 if __name__ == '__main__':
+    # Initialize flags before QApplication
+    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = (
+        "--disable-web-security "
+        "--allow-running-insecure-content "
+        "--autoplay-policy=no-user-gesture-required "
+        "--disable-features=IsolateOrigins,site-per-process"
+    )
     app = QApplication(sys.argv)
     p = FlixtoAdFreePlayer("Fight Club (1999)", "movie", 550)
     p.show()
